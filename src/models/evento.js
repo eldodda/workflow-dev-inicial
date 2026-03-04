@@ -1,4 +1,5 @@
 /* import db from '../db/dbconfig.js'; */
+/* eslint-disable camelcase */
 
 class Evento {
 	constructor({
@@ -33,3 +34,5 @@ class Evento {
 }
 
 export default Evento;
+
+/* eslint-enable camelcase */
