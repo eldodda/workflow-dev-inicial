@@ -10,19 +10,18 @@ services:
       - "3000:3000"
     volumes:
       - ./:/app:cached
+    # Adicionamos as variáveis aqui para garantir que o host seja 'db'
+    environment:
+      - DB_URL=postgres://postgres:admin123@db:5432/livraria_db
+      - ENVIRONMENT=development
     depends_on:
-      - db
-  test:
-    build: .
-    container_name: livraria_api_test
-    command: npm run test
-    working_dir: /app
-    ports:
-      - "4000:4000"
-    volumes:
-      - ./:/app:cached  
+      db:
+        condition: service_healthy # <--- Alterado para esperar o status 'healthy'
+      unleash:
+        condition: service_healthy # <--- Também espera o Unleash estar pronto
+
   db:
-    image: postgres:15
+    image: postgres:16 # Fixamos a versão para evitar surpresas
     container_name: livraria_db
     environment:
       - POSTGRES_USER=postgres
@@ -31,7 +30,64 @@ services:
     ports:
       - "5432:5432"
     volumes:
+      # Seguindo a recomendação do log: montar em /var/lib/postgresql
       - database:/var/lib/postgresql/data
-  
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d livraria_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  test:
+
+    build: .
+
+    container_name: livraria_api_test
+
+    command: npm run test
+
+    working_dir: /app
+
+    ports:
+
+      - "4000:4000"
+
+    volumes:
+
+      - ./:/app:cached
+
+  unleash:
+    build: ./unleash-docker/.
+    ports:
+      - "4242:4242"
+    environment:
+      DATABASE_URL: "postgres://postgres:unleash@db_unleash/postgres"
+      DATABASE_SSL: "false"
+      INIT_CLIENT_API_TOKENS: "default:development.unleash-insecure-api-token"
+    depends_on:
+      db_unleash:
+        condition: service_healthy # <--- Já estava usando a lógica certa aqui
+    command: [ "./wait-for", "db:5432", "--", "node", "index.js" ]
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:4242/health || exit 1
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  db_unleash:
+    expose:
+      - "5432"
+    image: postgres:14
+    environment:
+      POSTGRES_DB: "db"
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+    healthcheck:
+      test: [ "CMD", "pg_isready", "--username=postgres", "--host=127.0.0.1", "--port=5432" ]
+      interval: 2s
+      timeout: 1m
+      retries: 5
+      start_period: 10s
+
 volumes:
-   database:
+  database:
